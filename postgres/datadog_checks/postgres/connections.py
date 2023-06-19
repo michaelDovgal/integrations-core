@@ -6,7 +6,7 @@ import inspect
 import threading
 from collections import namedtuple
 
-import psycopg2
+import psycopg
 
 ConnectionWithTTL = namedtuple("ConnectionWithTTL", "connection deadline")
 
@@ -60,7 +60,7 @@ class MultiDatabaseConnectionPool(object):
                 self._stats.connection_opened += 1
                 db = self.connect_fn(dbname)
 
-            if db.status != psycopg2.extensions.STATUS_READY:
+            if db.info.status != psycopg.pq.ConnStatus.OK:
                 # Some transaction went wrong and the connection is in an unhealthy state. Let's fix that
                 db.rollback()
 
