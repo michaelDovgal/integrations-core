@@ -363,7 +363,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
                 PG_STAT_STATEMENTS_DEALLOC,
             )
             if rows:
-                dealloc = rows[0][0]
+                dealloc = rows[0]['count']
                 self._check.monotonic_count(
                     "postgresql.pg_stat_statements.dealloc",
                     dealloc,
@@ -383,7 +383,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
             )
             count = 0
             if rows:
-                count = rows[0][0]
+                count = rows[0]['count']
             self._check.gauge(
                 "postgresql.pg_stat_statements.max",
                 self._check.pg_settings.get("pg_stat_statements.max", 0),
