@@ -5,6 +5,7 @@
 import logging
 
 import psycopg
+from psycopg.rows import dict_row
 
 from datadog_checks.base.utils.db.sql import compute_sql_signature
 from datadog_checks.base.utils.tracking import tracked_method
@@ -112,7 +113,10 @@ class ExplainParameterizedQueries:
         rows = self._execute_query_and_fetch_rows(
             dbname, PARAM_TYPES_COUNT_QUERY.format(query_signature=query_signature)
         )
-        return rows[0][0] if rows else 0
+        count = 0
+        if rows and 'count' in rows[0]:
+            count = rows[0]['count']
+        return count
 
     @tracked_method(agent_check_getter=agent_check_getter)
     def _explain_prepared_statement(self, dbname, statement, obfuscated_statement, query_signature):

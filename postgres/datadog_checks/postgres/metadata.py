@@ -6,6 +6,7 @@ import time
 from typing import Dict, Optional, Tuple  # noqa: F401
 
 import psycopg
+from psycopg.rows import dict_row
 
 try:
     import datadog_agent

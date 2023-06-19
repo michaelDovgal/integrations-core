@@ -170,9 +170,10 @@ class PostgresStatementMetrics(DBMAsyncJob):
         query = STATEMENTS_QUERY.format(
             cols='*', pg_stat_statements_view=self._config.pg_stat_statements_view, extra_clauses="LIMIT 0", filters=""
         )
-        # TODO: using a with block here actually closes the connection https://www.psycopg.org/psycopg3/docs/basic/from_pg2.html#diff-with
+        # TODO: using a with blo`ck here actually closes the connection https://www.psycopg.org/psycopg3/docs/basic/from_pg2.html#diff-with
         with self._check._get_db(self._config.dbname).cursor() as cursor:
-            self._execute_query(cursor, query, params=(self._config.dbname,))
+            # TODO: we do not need the dbname as a param here, psycopg2 just ignored it, but psycopg3 will fail
+            self._execute_query(cursor, query, params=())
             col_names = [desc[0] for desc in cursor.description] if cursor.description else []
             self._stat_column_cache = col_names
             return col_names
@@ -247,31 +248,33 @@ class PostgresStatementMetrics(DBMAsyncJob):
             if self._check.pg_settings.get("track_io_timing") != "on":
                 desired_columns -= PG_STAT_STATEMENTS_TIMING_COLUMNS
 
-            pg_stat_statements_max = int(self._check.pg_settings.get("pg_stat_statements.max"))
-            if pg_stat_statements_max > self._pg_stat_statements_max_warning_threshold:
-                self._check.record_warning(
-                    DatabaseConfigurationError.high_pg_stat_statements_max,
-                    warning_with_tags(
-                        "pg_stat_statements.max is set to %d which is higher than the supported "
-                        "value of %d. This can have a negative impact on database and collection of "
-                        "query metrics performance. Consider lowering the pg_stat_statements.max value to %d. "
-                        "Alternatively, you may acknowledge the potential performance impact by increasing the "
-                        "query_metrics.pg_stat_statements_max_warning_threshold to equal or greater than %d to "
-                        "silence this warning. "
-                        "See https://docs.datadoghq.com/database_monitoring/setup_postgres/"
-                        "troubleshooting#%s for more details",
-                        pg_stat_statements_max,
-                        self._pg_stat_statements_max_warning_threshold,
-                        self._pg_stat_statements_max_warning_threshold,
-                        self._pg_stat_statements_max_warning_threshold,
-                        DatabaseConfigurationError.high_pg_stat_statements_max.value,
-                        host=self._check.resolved_hostname,
-                        dbname=self._config.dbname,
-                        code=DatabaseConfigurationError.high_pg_stat_statements_max.value,
-                        value=pg_stat_statements_max,
-                        threshold=self._pg_stat_statements_max_warning_threshold,
-                    ),
-                )
+            # TODO: make this work again with upgraded psycopg
+            # this is just for monitoring & isn't important for the actual functionality in the check
+            # pg_stat_statements_max = int(self._check.pg_settings.get("pg_stat_statements.max"))
+            # if pg_stat_statements_max > self._pg_stat_statements_max_warning_threshold:
+            #     self._check.record_warning(
+            #         DatabaseConfigurationError.high_pg_stat_statements_max,
+            #         warning_with_tags(
+            #             "pg_stat_statements.max is set to %d which is higher than the supported "
+            #             "value of %d. This can have a negative impact on database and collection of "
+            #             "query metrics performance. Consider lowering the pg_stat_statements.max value to %d. "
+            #             "Alternatively, you may acknowledge the potential performance impact by increasing the "
+            #             "query_metrics.pg_stat_statements_max_warning_threshold to equal or greater than %d to "
+            #             "silence this warning. "
+            #             "See https://docs.datadoghq.com/database_monitoring/setup_postgres/"
+            #             "troubleshooting#%s for more details",
+            #             pg_stat_statements_max,
+            #             self._pg_stat_statements_max_warning_threshold,
+            #             self._pg_stat_statements_max_warning_threshold,
+            #             self._pg_stat_statements_max_warning_threshold,
+            #             DatabaseConfigurationError.high_pg_stat_statements_max.value,
+            #             host=self._check.resolved_hostname,
+            #             dbname=self._config.dbname,
+            #             code=DatabaseConfigurationError.high_pg_stat_statements_max.value,
+            #             value=pg_stat_statements_max,
+            #             threshold=self._pg_stat_statements_max_warning_threshold,
+            #         ),
+            #     )
 
             query_columns = sorted(available_columns & desired_columns)
             params = ()
@@ -301,7 +304,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
 
             if (
                 isinstance(e, psycopg.errors.ObjectNotInPrerequisiteState)
-            ) and 'pg_stat_statements must be loaded' in str(e.pgerror):
+            ) and 'pg_stat_statements must be loaded' in str(e.sqlstate):
                 error_tag = "error:database-{}-pg_stat_statements_not_loaded".format(type(e).__name__)
                 self._check.record_warning(
                     DatabaseConfigurationError.pg_stat_statements_not_loaded,
@@ -317,7 +320,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
                         code=DatabaseConfigurationError.pg_stat_statements_not_loaded.value,
                     ),
                 )
-            elif isinstance(e, psycopg.errors.UndefinedTable) and 'pg_stat_statements' in str(e.pgerror):
+            elif isinstance(e, psycopg.errors.UndefinedTable) and 'pg_stat_statements' in str(e.sqlstate):
                 error_tag = "error:database-{}-pg_stat_statements_not_created".format(type(e).__name__)
                 self._check.record_warning(
                     DatabaseConfigurationError.pg_stat_statements_not_created,
@@ -362,7 +365,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
                 self._check._get_db(self._config.dbname).cursor(row_factory=dict_row),
                 PG_STAT_STATEMENTS_DEALLOC,
             )
-            if rows:
+            if rows and 'count' in rows[0]:
                 dealloc = rows[0]['count']
                 self._check.monotonic_count(
                     "postgresql.pg_stat_statements.dealloc",
@@ -382,7 +385,7 @@ class PostgresStatementMetrics(DBMAsyncJob):
                 query,
             )
             count = 0
-            if rows:
+            if rows and 'count' in rows[0]:
                 count = rows[0]['count']
             self._check.gauge(
                 "postgresql.pg_stat_statements.max",
